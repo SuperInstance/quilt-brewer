@@ -307,10 +307,12 @@ def _tests_template(name: str, recipe: dict) -> str:
     pkg = _pkg_name(name)
     klass = _class_name(recipe["substrate_kind"])
     tests = recipe.get("tests", ["test_basic", "test_polarity"])
+    pol_keys = list(recipe["polarity_rules"].keys())  # ACCEPT, DRIFT, REFUSE in order
+    statuses = [recipe["polarity_rules"][k] for k in pol_keys]
     test_body = ""
     for i, t in enumerate(tests):
-        pol_choice = ["ACCEPT", "DRIFT", "REFUSE"][i % 3]
-        status = recipe["polarity_rules"][pol_choice]
+        pol_choice = pol_keys[i % 3]
+        status = statuses[i % 3]
         test_body += f'''
     def {t}(self):
         """{t}"""
@@ -323,6 +325,11 @@ def _tests_template(name: str, recipe: dict) -> str:
         self.assertIsNotNone(receipt)
         self.assertEqual(receipt.polarity, "{pol_choice}")
 '''
+    # Use the same statuses for the by_polarity test
+    by_polarity_stmts = "\n".join(
+        f'        substrate.step("c{i}", {{}}, "{statuses[i]}")'
+        for i in range(3)
+    )
     return f'''"""Tests for {name}."""
 import os
 import sys
@@ -351,9 +358,7 @@ class Test{klass}Substrate(unittest.TestCase):
 
     def test_by_polarity(self):
         substrate = {klass}Substrate()
-        substrate.step("c0", {{}}, "ok")
-        substrate.step("c1", {{}}, "warn")
-        substrate.step("c2", {{}}, "fail")
+{by_polarity_stmts}
         counts = substrate.by_polarity()
         self.assertEqual(counts["ACCEPT"], 1)
         self.assertEqual(counts["DRIFT"], 1)
